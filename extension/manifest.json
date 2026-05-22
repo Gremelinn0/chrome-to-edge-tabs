@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Group Creator",
+  "version": "1.0",
+  "description": "Creates tab groups programmatically via CDP",
+  "permissions": ["tabs", "tabGroups"],
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js" },
+  "action": {}
+}
