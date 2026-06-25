@@ -14,4 +14,6 @@ Sur les démarches admin de Florent (Gmail, impôts, URSSAF, CAF, bailleur…), 
 
 **Courrier au bailleur** (appartement Charenton, agence SCOMAP) : skill `/logement-scomap` (local). Règle d'or : tout part **au nom de Guillaume** (seul titulaire du bail), depuis son adresse — Claude prépare le mail vers Guillaume, qui le recopie et l'envoie lui-même.
 
-**Autres skills locaux perso** : `/courses` (Uber Eats), `/hellofresh` (parrainage), `/leboncoin` (annonces), `/claude-subscriptions`, `/tab-groups-manager`.
+**Repas + courses** : `/recipe-finder` (trouve de bonnes recettes selon les critères de Florent — prépa courte, infos complètes note/avis/étapes — via sa Notion Recettes + Marmiton en Chrome MCP) PUIS `/courses` (commande les ingrédients manquants sur Uber Eats, stop avant paiement). Ordre TOUJOURS recette → courses.
+
+**Autres skills locaux perso** : `/hellofresh` (parrainage), `/leboncoin` (annonces), `/claude-subscriptions`, `/tab-groups-manager`.
