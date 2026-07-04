@@ -16,4 +16,4 @@ Sur les démarches admin de Florent (Gmail, impôts, URSSAF, CAF, bailleur…), 
 
 **Repas + courses** : `/recipe-finder` (trouve de bonnes recettes selon les critères de Florent — prépa courte, infos complètes note/avis/étapes — via sa Notion Recettes + Marmiton en Chrome MCP) PUIS `/courses` (commande les ingrédients manquants sur Uber Eats, stop avant paiement). Ordre TOUJOURS recette → courses.
 
-**Autres skills locaux perso** : `/hellofresh` (parrainage), `/leboncoin` (annonces), `/claude-subscriptions`, `/tab-groups-manager`.
+**Autres skills locaux perso** : `/hellofresh` (parrainage), `/leboncoin` (annonces), `/claude-subscriptions`, `/tab-groups-manager`, `/wow-macros` (macros WoW Ascension/Conquest of Azeroth, sorts confirmés sur db.ascension.gg).
