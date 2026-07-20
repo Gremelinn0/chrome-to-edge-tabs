@@ -1,137 +1,151 @@
 <#
 .SYNOPSIS
-  Extracts Chrome tab groups from the active session (SNSS) and/or saved groups (LevelDB).
+  Extracts Chrome tab groups (name + current tab URLs) from the active session (SNSS).
   Outputs a JSON file ready for use with 2-create-edge-groups.ps1.
 
+.NOTES
+  - SNSS-ONLY by design. The old LevelDB Sync regex fallback was REMOVED (2026-07-15):
+    it injected raw binary bytes into URLs (e.g. "https://app.n%rd.com/...") and produced
+    garbage. SNSS (the active session file) holds clean current URLs per tab.
+  - Group NAME comes from SNSS command type 27 (group metadata). Group<->tab from type 25.
+    Current URL per tab from type 6 (last navigation wins).
+  - LIMITATION: reads a snapshot on disk, not the live browser. If Florent is actively
+    reshuffling the group RIGHT NOW, re-run after Chrome rewrites the session (a few seconds),
+    and ALWAYS confirm the URL list with him before creating in Edge (skill RULE N.1).
+
 .OUTPUTS
-  %TEMP%\chrome_groups_final.json
+  %TEMP%\chrome_groups_final.json   (array of { name, edgeColor, tabs:[{url}] })
 #>
 
 $outputPath = "$env:TEMP\chrome_groups_final.json"
 
-# ── Phase A: Active session via SNSS ──────────────────────────────────────────
-# Chrome 120+: "Current Session" = most recent Session_* file (not Tabs_* which is exclusively locked)
-
 $sessDir = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Sessions"
-$sessFile = Get-ChildItem $sessDir -Filter "Session_*" |
+$candidates = Get-ChildItem $sessDir -Filter "Session_*" |
     Where-Object { $_.Length -gt 1000 } |
     Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+    Select-Object -First 5
 
-if (-not $sessFile) {
-    Write-Error "No Chrome session file found in $sessDir"
-    exit 1
+if (-not $candidates) { Write-Error "No Chrome session file found in $sessDir"; exit 1 }
+
+# The single most recent Session_* file can be actively being appended to by Chrome right now
+# (exclusively locked while it grows) - fall back to the next-most-recent candidate instead of
+# hard-failing. A few minutes of staleness is fine: RULE N.1 confirms the list with Florent anyway.
+$sessFile = $null; $bytes = $null
+foreach ($cand in $candidates) {
+    try {
+        $fs = [System.IO.File]::Open($cand.FullName, 'Open', 'Read', ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+        $b = New-Object byte[] $fs.Length
+        $fs.Read($b, 0, $b.Length) | Out-Null
+        $fs.Close()
+        $sessFile = $cand; $bytes = $b
+        break
+    } catch {
+        Write-Host "Skipping $($cand.Name): locked by Chrome (actively writing) - trying next"
+    }
 }
-
-Write-Host "Reading session: $($sessFile.FullName) ($($sessFile.Length) bytes)"
-
-$fs = [System.IO.File]::Open($sessFile.FullName, 'Open', 'Read', 'ReadWrite')
-$bytes = New-Object byte[] $fs.Length
-$fs.Read($bytes, 0, $bytes.Length) | Out-Null
-$fs.Close()
+if (-not $sessFile) { Write-Error "All recent session files are locked by Chrome - close a tab and retry"; exit 1 }
+Write-Host "Reading session: $($sessFile.Name) ($($sessFile.Length) bytes, $($sessFile.LastWriteTime))"
 
 # Parse SNSS commands: 2-byte size (includes type byte) + 1-byte type + data
-$pos = 8
-$allCmds = @()
+$pos = 8; $cmds = @()
 while ($pos + 3 -le $bytes.Length) {
     $size = [BitConverter]::ToUInt16($bytes, $pos)
     $type = $bytes[$pos + 2]
     if ($size -eq 0 -or ($pos + 2 + $size) -gt $bytes.Length) { $pos++; continue }
     $dataLen = $size - 1
-    $dataBytes = if ($dataLen -gt 0) { $bytes[($pos + 3)..($pos + 1 + $size)] } else { @() }
-    $allCmds += [PSCustomObject]@{ Pos = $pos; Type = $type; Size = $size; DataLen = $dataLen; Data = $dataBytes }
+    $d = if ($dataLen -gt 0) { $bytes[($pos + 3)..($pos + 1 + $size)] } else { @() }
+    $cmds += [PSCustomObject]@{ Pos = $pos; Type = $type; Data = $d }
     $pos += 2 + $size
 }
-Write-Host "Total SNSS commands: $($allCmds.Count)"
+Write-Host "Total SNSS commands: $($cmds.Count)"
 
-# Type 27 → group metadata (UUID bytes 4-19, name length at byte 20, name UTF-16 LE at byte 24)
-$groupMap = @{}
-$allCmds | Where-Object { $_.Type -eq 27 } | ForEach-Object {
-    $d = $_.Data
-    if ($d.Length -lt 24) { return }
-    $key = ($d[4..19] | ForEach-Object { $_.ToString("X2") }) -join ""
+# Type 27 -> group metadata: UUID bytes 4-19, name length at 20 (x2 UTF-16), name at 24. Last wins.
+$groupName = @{}
+foreach ($c in ($cmds | Where-Object { $_.Type -eq 27 })) {
+    $d = $c.Data
+    if ($d.Length -lt 24) { continue }
+    $uuid = ($d[4..19] | ForEach-Object { $_.ToString("X2") }) -join ""
     $nameLen = [BitConverter]::ToUInt32($d, 20) * 2
     if ($nameLen -gt 0 -and 24 + $nameLen -le $d.Length) {
-        $name = [Text.Encoding]::Unicode.GetString($d, 24, $nameLen)
-        if (-not $groupMap.ContainsKey($key)) { $groupMap[$key] = $name }
+        $groupName[$uuid] = [Text.Encoding]::Unicode.GetString($d, 24, $nameLen)
     }
 }
 
-# Type 25 → tab token (bytes 0-3) → group UUID (bytes 8-23)
-$tabToGroup = @{}
-$allCmds | Where-Object { $_.Type -eq 25 -and $_.DataLen -ge 24 } | ForEach-Object {
-    $d = $_.Data
-    $tabToken = ($d[0..3] | ForEach-Object { $_.ToString("X2") }) -join ""
-    $groupKey = ($d[8..23] | ForEach-Object { $_.ToString("X2") }) -join ""
-    if ($groupMap.ContainsKey($groupKey)) { $tabToGroup[$tabToken] = $groupMap[$groupKey] }
+# Type 25 -> tab id bytes 0-3, group UUID bytes 8-23. Last wins.
+$tabGroup = @{}
+foreach ($c in ($cmds | Where-Object { $_.Type -eq 25 })) {
+    $d = $c.Data
+    if ($d.Length -lt 24) { continue }
+    $tab = ($d[0..3] | ForEach-Object { $_.ToString("X2") }) -join ""
+    $tabGroup[$tab] = ($d[8..23] | ForEach-Object { $_.ToString("X2") }) -join ""
 }
 
-# Type 6 → current URL (token bytes 4-7, URL length bytes 12-15, URL UTF-8 at byte 16)
-$tabToUrl = @{}
-$allCmds | Where-Object { $_.Type -eq 6 -and $_.DataLen -ge 20 } | ForEach-Object {
-    $d = $_.Data
-    if ($d.Length -lt 16) { return }
-    $tabToken = ($d[4..7] | ForEach-Object { $_.ToString("X2") }) -join ""
+# Type 7 -> SetSelectedNavigationIndex: tab id bytes 0-3, selected nav index bytes 4-7. Last wins.
+# CRITICAL (2026-07-15): a tab with back/forward history has several type-6 nav entries; the
+# CURRENT url is the one at the SELECTED index, NOT the last-written entry. Ignoring this put a
+# "went-there-then-came-back" URL in Edge (antigravity instead of pastry-chef-rachel).
+$tabSel = @{}
+foreach ($c in ($cmds | Where-Object { $_.Type -eq 7 })) {
+    $d = $c.Data
+    if ($d.Length -lt 8) { continue }
+    $tab = ($d[0..3] | ForEach-Object { $_.ToString("X2") }) -join ""
+    $tabSel[$tab] = [BitConverter]::ToInt32($d, 4)
+}
+
+# Type 6 -> UpdateTabNavigation: tab id bytes 4-7, nav index bytes 8-11, URL len bytes 12-15, URL at 16.
+# Collect per-tab: url at each nav index (last write per index wins) + the highest index seen (fallback).
+$navUrls    = @{}   # tab -> @{ index -> url }
+$navMaxIdx  = @{}   # tab -> highest index with a valid url
+foreach ($c in ($cmds | Where-Object { $_.Type -eq 6 } | Sort-Object Pos)) {
+    $d = $c.Data
+    if ($d.Length -lt 16) { continue }
+    $tab = ($d[4..7] | ForEach-Object { $_.ToString("X2") }) -join ""
+    $navIdx = [BitConverter]::ToInt32($d, 8)
     $urlLen = [BitConverter]::ToUInt32($d, 12)
-    if ($urlLen -gt 0 -and $urlLen -lt 4096 -and 16 + $urlLen -le $d.Length) {
+    if ($urlLen -gt 0 -and $urlLen -lt 8192 -and 16 + $urlLen -le $d.Length) {
         $url = [Text.Encoding]::UTF8.GetString($d, 16, $urlLen)
-        if ($url -match '^https?://') { $tabToUrl[$tabToken] = $url }
-    }
-}
-
-# Build group → URLs map
-$groupUrls = @{}
-$tabToGroup.GetEnumerator() | ForEach-Object {
-    $url = $tabToUrl[$_.Key]
-    if ($url -and $url -notmatch '^chrome://') {
-        if (-not $groupUrls.ContainsKey($_.Value)) { $groupUrls[$_.Value] = @() }
-        $groupUrls[$_.Value] += $url
-    }
-}
-
-# ── Phase B: Saved groups via LevelDB Sync ────────────────────────────────────
-# Fallback: reads saved_tab_group-dt-<uuid> entries from Chrome Sync LevelDB
-
-$ldbPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Sync Data\LevelDB"
-if (Test-Path $ldbPath) {
-    Write-Host "Also scanning LevelDB for saved groups..."
-    $allText = ""
-    foreach ($f in Get-ChildItem $ldbPath -Filter "*.ldb") {
-        try {
-            $fss = [System.IO.File]::Open($f.FullName, 'Open', 'Read', 'ReadWrite')
-            $b = New-Object byte[] $fss.Length
-            $fss.Read($b, 0, $b.Length) | Out-Null
-            $fss.Close()
-            $allText += [Text.Encoding]::GetEncoding('iso-8859-1').GetString($b)
-        } catch { }
-    }
-    $pat = '\$([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[^\$]{0,50}(https?://[^\x00-\x1F\x7F"<>\s\\]{8,})"([^"\x00-\x1F]{3,80})'
-    [regex]::Matches($allText, $pat) | ForEach-Object {
-        $groupId = $_.Groups[1].Value
-        $url = $_.Groups[2].Value
-        $title = $_.Groups[3].Value
-        # Only add URLs not already captured from active session
-        $alreadyCaptured = $groupUrls.Values | ForEach-Object { $_ } | Where-Object { $_ -eq $url }
-        if (-not $alreadyCaptured) {
-            $groupKey = "saved-$groupId"
-            if (-not $groupUrls.ContainsKey($groupKey)) { $groupUrls[$groupKey] = @() }
-            $groupUrls[$groupKey] += $url
+        if ($url -match '^https?://' -or $url -match '^file://') {
+            if (-not $navUrls.ContainsKey($tab)) { $navUrls[$tab] = @{} }
+            $navUrls[$tab][$navIdx] = $url
+            if (-not $navMaxIdx.ContainsKey($tab) -or $navIdx -gt $navMaxIdx[$tab]) { $navMaxIdx[$tab] = $navIdx }
         }
     }
 }
 
-# ── Output ────────────────────────────────────────────────────────────────────
+# Resolve each tab's CURRENT url: url at selected index; fall back to highest index if selected missing.
+$tabUrl = @{}
+foreach ($tab in $navUrls.Keys) {
+    $entries = $navUrls[$tab]
+    $chosen = $null
+    if ($tabSel.ContainsKey($tab) -and $entries.ContainsKey($tabSel[$tab])) { $chosen = $entries[$tabSel[$tab]] }
+    elseif ($entries.ContainsKey($navMaxIdx[$tab])) { $chosen = $entries[$navMaxIdx[$tab]] }
+    if ($chosen) { $tabUrl[$tab] = $chosen }
+}
 
+# Build groups: UUID -> ordered current tab URLs (tabs without a current http/file URL = closed/blank -> skipped)
+$groupUrls = @{}
+foreach ($tab in $tabGroup.Keys) {
+    $uuid = $tabGroup[$tab]
+    if (-not $tabUrl.ContainsKey($tab)) { continue }
+    if (-not $groupUrls.ContainsKey($uuid)) { $groupUrls[$uuid] = @() }
+    $groupUrls[$uuid] += $tabUrl[$tab]
+}
+
+# Output (name from metadata; unnamed groups keyed by short uuid)
 $output = @()
-foreach ($entry in $groupUrls.GetEnumerator()) {
+foreach ($uuid in $groupUrls.Keys) {
+    $name = if ($groupName.ContainsKey($uuid)) { $groupName[$uuid] } else { "group-$($uuid.Substring(0,8))" }
     $output += @{
-        name     = $entry.Key
+        name      = $name
         edgeColor = "cyan"
-        tabs     = @($entry.Value | Sort-Object -Unique | ForEach-Object { @{ url = $_ } })
+        tabs      = @($groupUrls[$uuid] | Select-Object -Unique | ForEach-Object { @{ url = $_ } })
     }
 }
 
-$output | ConvertTo-Json -Depth 10 | Out-File $outputPath -Encoding utf8
+# ConvertTo-Json: wrap in @() so a single group still serializes as a JSON array (script 2 expects an array)
+ConvertTo-Json -InputObject @($output) -Depth 10 | Out-File $outputPath -Encoding utf8
+
 Write-Host "`nGroups extracted: $($output.Count)"
 $output | ForEach-Object { Write-Host "  - $($_.name): $($_.tabs.Count) tabs" }
 Write-Host "JSON saved to: $outputPath"
+Write-Host "`nRULE N.1: show this list to the user and confirm BEFORE creating in Edge."
