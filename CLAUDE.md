@@ -14,6 +14,8 @@ Sur les démarches admin de Florent (Gmail, impôts, URSSAF, CAF, bailleur…), 
 
 **Courrier au bailleur** (appartement Charenton, agence SCOMAP) : skill `/logement-scomap` (local). Règle d'or : tout part **au nom de Guillaume** (seul titulaire du bail), depuis son adresse — Claude prépare le mail vers Guillaume, qui le recopie et l'envoie lui-même.
 
+**Preuve/archive Discord** (dossier arnaque Dofus 2022 et besoins similaires futurs) : skill `/discord-dm-export` (local) — capture une conversation Discord complète (DM) en screenshots PNG numérotés, sans saturer la session (capture native PowerShell découplée de la navigation en texte — jamais une image par étape de scroll). Contexte : mémoire `arnaque_dofus_2022.md` + `Documents\Arnaque\DOSSIER-ARNAQUE-2022.md`.
+
 **Repas + courses** : `/recipe-finder` (trouve de bonnes recettes selon les critères de Florent — prépa courte, infos complètes note/avis/étapes — via sa Notion Recettes + Marmiton en Chrome MCP) PUIS `/courses` (commande les ingrédients manquants sur Uber Eats, stop avant paiement). Ordre TOUJOURS recette → courses.
 
 **Autres skills locaux perso** : `/hellofresh` (parrainage), `/leboncoin` (annonces), `/claude-subscriptions`, `/tab-groups-manager`, `/wow-macros` (macros WoW Ascension/Conquest of Azeroth, sorts confirmés sur db.ascension.gg).
