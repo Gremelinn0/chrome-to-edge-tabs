@@ -10,7 +10,13 @@ Sur les démarches admin de Florent (Gmail, impôts, URSSAF, CAF, bailleur…), 
 
 **Emails Gmail** : triage inbox, archivage en masse, filtres. Skill `/gmail-filters` (global global).
 
-**Fiscal + social (impôts ET URSSAF)** : déclarations IR/IS/CFE/TVA + cotisations URSSAF auto-entrepreneur (déclarations trimestrielles, dettes, délais de paiement, remises de majorations). Skill `/impots-urssaf-fr` (local). État vivant du compte URSSAF = mémoire `urssaf_cotisations.md` ; RSA = `rsa_caf.md`. **Garde-fou** : préparer la démarche, faire valider le **contenu** par Florent, puis **soumettre soi-même** (cf Règle de soumission ci-dessus) ; seul un **paiement** (cotisation, impôt) reste exécuté par Florent.
+**Fiscal + social (impôts ET URSSAF)** : déclarations IR/IS/CFE/TVA + cotisations URSSAF auto-entrepreneur (déclarations trimestrielles, dettes, délais de paiement, remises de majorations). Skill `/impots-urssaf-fr` (**global**, `~/.claude/skills/impots-urssaf-fr/` — sa copie dans ce dépôt est historique). État vivant du compte URSSAF = mémoire `urssaf_cotisations.md` ; RSA = `rsa_caf.md`. **Garde-fou** : préparer la démarche, faire valider le **contenu** par Florent, puis **soumettre soi-même** (cf Règle de soumission ci-dessus) ; seul un **paiement** (cotisation, impôt) reste exécuté par Florent.
+
+**CAF / RSA (gravé 2026-09-30)** — lire `references/caf-rsa.md` du skill `/impots-urssaf-fr` AVANT tout geste sur wwwd.caf.fr :
+1. **Un message « Contacter ma Caf » n'est PAS la déclaration.** L'alerte « Information manquante » et l'arrêt des versements durent jusqu'au dépôt du CERFA joint (ou de l'e-déclaration) — mesuré 09/09 → 30/09/2026 : deux messages, zéro effet. Ne jamais dire « fait » tant que l'alerte est affichée.
+2. **Sur caf.fr, clics par coordonnées, pas par `ref`** : un clic sans effet ne prouve rien (« un seul paiement » conclu à tort ; au clic réel : 3, soit 1 939,56 €).
+3. **Aide parentale : 11 718 €/an = 2025 (IR) ; 2026 = 400 + 400 = 800 €/mois (CAF).** Ne jamais lisser l'un en l'autre.
+4. **Le CERFA se remplit par script, Florent le signe** (Edge → Dessiner) ; jamais de signature, jamais de connexion FranceConnect à sa place.
 
 **Courrier au bailleur** (appartement Charenton, agence SCOMAP) : skill `/logement-scomap` (local). Règle d'or : tout part **au nom de Guillaume** (seul titulaire du bail), depuis son adresse — Claude prépare le mail vers Guillaume, qui le recopie et l'envoie lui-même.
 
