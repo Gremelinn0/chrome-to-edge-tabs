@@ -8,7 +8,7 @@ Sur les démarches admin de Florent (Gmail, impôts, URSSAF, CAF, bailleur…), 
 
 **SEULE exception : tout mouvement d'argent** (payer une cotisation, un impôt, faire un virement) → là Florent exécute le paiement lui-même (règle financière). Préparer le contenu reste la norme : Florent valide le contenu, Claude soumet.
 
-**Emails Gmail** : triage inbox, archivage en masse, filtres. Skill `/gmail-filters` (global global).
+**Emails Gmail** : triage inbox, filtres, boucle de tri dans la session (pas de routine). Skill `/gmail-filters` (global global). **Règle n°1 (Florent, 2026-09-30) : un filtre ou un libellé RANGE, il ne CACHE pas** — humains, entretiens, rendez-vous, leads, clients restent toujours dans la boîte de réception ; seul le bruit automatique d'un expéditeur exact en sort. Chaque tour annonce, mail par mail, le geste (garder · libellé seul · libellé + hors boîte) avant d'agir.
 
 **Fiscal + social (impôts ET URSSAF)** : déclarations IR/IS/CFE/TVA + cotisations URSSAF auto-entrepreneur (déclarations trimestrielles, dettes, délais de paiement, remises de majorations). Skill `/impots-urssaf-fr` (**global**, `~/.claude/skills/impots-urssaf-fr/` — sa copie dans ce dépôt est historique). État vivant du compte URSSAF = mémoire `urssaf_cotisations.md` ; RSA = `rsa_caf.md`. **Garde-fou** : préparer la démarche, faire valider le **contenu** par Florent, puis **soumettre soi-même** (cf Règle de soumission ci-dessus) ; seul un **paiement** (cotisation, impôt) reste exécuté par Florent.
 
